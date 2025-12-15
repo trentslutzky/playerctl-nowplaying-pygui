@@ -1,0 +1,13 @@
+[project]
+name = "playerctl-nowplaying-pygui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=12.0.0",
+    "pygobject>=3.54.5",
+    "pyqt6>=6.10.1",
+    "pysimplegui>=5.0.8.3",
+    "requests>=2.32.5",
+]
