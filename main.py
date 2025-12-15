@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QLabel, QHBoxLayout)
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QPixmap, QPalette, QBrush, QColor
+from PyQt6.QtGui import QPixmap, QPalette, QBrush, QColor, QKeyEvent
 import subprocess
 import requests
 import sys
@@ -21,6 +21,13 @@ AUTO_REFRESH_SECONDS = 1
 BACKGROUND_BLUR_RADIUS = 50
 BACKGROUND_DIM_FACTOR = 0.3  # 0.0 = black, 1.0 = full brightness
 
+# Status text customization
+STATUS_TEXT = {
+    "Playing": "",
+    "Paused": "󰏤 paused",
+    "Stopped": "STOPPED"
+}
+
 CSS_TEMPLATE = """
 QMainWindow {{
     background-color: #000000;
@@ -30,6 +37,12 @@ QLabel {{
     font-size: 40px;
     font-family: JetBrainsMono Nerd Font;
     background-color: transparent;
+}}
+QLabel#status {{
+    color: {tertiary_color};
+    font-size: 25px;
+    background-color: transparent;
+    text-transform: uppercase;
 }}
 QLabel#info {{
     color: {secondary_color};
@@ -87,6 +100,12 @@ class SpotifyNowPlaying(QMainWindow):
         info_layout.setSpacing(10)
         info_layout.setObjectName("info_layout")
         info_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        
+        # Status (Playing/Paused)
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("status")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        info_layout.addWidget(self.status_label)
         
         # Artist
         self.artist_label = QLabel("Unknown Artist")
@@ -152,6 +171,19 @@ class SpotifyNowPlaying(QMainWindow):
                     metadata[key] = value
             
             return metadata
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None
+    
+    def get_playerctl_status(self):
+        """Get the current playback status"""
+        try:
+            result = subprocess.run(
+                ['playerctl', 'status'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
             return None
     
@@ -284,6 +316,7 @@ class SpotifyNowPlaying(QMainWindow):
     def refresh_metadata(self):
         """Refresh the now playing information"""
         metadata = self.get_playerctl_metadata()
+        status = self.get_playerctl_status()
         
         if metadata:
             title = metadata.get('xesam:title', 'Unknown Title')
@@ -292,6 +325,13 @@ class SpotifyNowPlaying(QMainWindow):
             length = metadata.get('mpris:length', '0')
             track_num = metadata.get('xesam:trackNumber', '')
             art_url = metadata.get('mpris:artUrl', '')
+            
+            # Update status
+            if status:
+                custom_status = STATUS_TEXT.get(status, status.upper())
+                self.status_label.setText(custom_status)
+            else:
+                self.status_label.setText("")
             
             self.title_label.setText(title)
             self.artist_label.setText(artist)
@@ -302,10 +342,22 @@ class SpotifyNowPlaying(QMainWindow):
             else:
                 self.show_placeholder_art()
         else:
+            self.status_label.setText("")
             self.title_label.setText("No track playing")
             self.artist_label.setText("Open Spotify and play a song")
             self.album_label.setText("")
             self.show_placeholder_art()
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle keyboard events"""
+        if event.key() == Qt.Key.Key_Space:
+            try:
+                subprocess.run(['playerctl', 'play-pause'], check=True)
+                print("Toggled play/pause")
+            except subprocess.CalledProcessError as e:
+                print(f"Error toggling play/pause: {e}")
+        else:
+            super().keyPressEvent(event)
 
 def main():
     app = QApplication(sys.argv)
