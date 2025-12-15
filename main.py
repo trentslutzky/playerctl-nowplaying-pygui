@@ -78,7 +78,7 @@ class SpotifyNowPlaying(QMainWindow):
         content_widget.setGeometry(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
         
         main_layout = QHBoxLayout(content_widget)
-        main_layout.setSpacing(60)
+        main_layout.setSpacing(0)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
         main_layout.setContentsMargins(60, 60, 60, 60)
         
@@ -157,12 +157,16 @@ class SpotifyNowPlaying(QMainWindow):
     
     def get_average_color(self, image):
         """Get the most vibrant/saturated color from an image"""
+        # Convert to RGB if needed (handles RGBA, P, L modes)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
         # Resize to small size for faster processing
         small_image = image.resize((50, 50), Image.LANCZOS)
         pixels = list(small_image.getdata())
         
         # Filter out very dark pixels (likely backgrounds)
-        bright_pixels = [p for p in pixels if sum(p[:3]) > 100]
+        bright_pixels = [p for p in pixels if sum(p) > 100]
         
         # If we have bright pixels, use those
         if bright_pixels:
