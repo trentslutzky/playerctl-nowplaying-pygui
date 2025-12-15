@@ -15,7 +15,7 @@ import colorsys
 WINDOW_WIDTH = 1920
 WINDOW_HEIGHT = 1080
 ALBUM_ART_SIZE = 959
-AUTO_REFRESH_SECONDS = 1
+AUTO_REFRESH_SECONDS = 0.1  # 100ms refresh
 
 # Background blur and dim settings
 BACKGROUND_BLUR_RADIUS = 50
@@ -23,8 +23,8 @@ BACKGROUND_DIM_FACTOR = 0.3  # 0.0 = black, 1.0 = full brightness
 
 # Status text customization
 STATUS_TEXT = {
-    "Playing": "",
-    "Paused": "󰏤 paused",
+    "Playing": "PLAYING",
+    "Paused": "PAUSED",
     "Stopped": "STOPPED"
 }
 
@@ -70,6 +70,10 @@ class SpotifyNowPlaying(QMainWindow):
         
         # Default colors
         self.update_colors("#ffffff", "#888888", "#555555")
+        
+        # Image cache
+        self.image_cache = {}
+        self.current_art_url = None
         
         # Create a stacked layout with background
         central_widget = QWidget()
@@ -149,7 +153,7 @@ class SpotifyNowPlaying(QMainWindow):
         # Auto-refresh timer
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh_metadata)
-        self.timer.start(AUTO_REFRESH_SECONDS * 1000)
+        self.timer.start(int(AUTO_REFRESH_SECONDS * 1000))
         
     
     def get_playerctl_metadata(self):
@@ -261,8 +265,28 @@ class SpotifyNowPlaying(QMainWindow):
     def load_album_art(self, url):
         """Download and display album art"""
         try:
-            response = requests.get(url, timeout=5)
-            image = Image.open(BytesIO(response.content))
+            # Check if this is a new URL
+            if url == self.current_art_url:
+                return  # Already loaded, no need to fetch again
+            
+            # Check cache first
+            if url in self.image_cache:
+                print(f"Loading from cache: {url}")
+                image = self.image_cache[url]
+            else:
+                print(f"Fetching new image: {url}")
+                response = requests.get(url, timeout=5)
+                image = Image.open(BytesIO(response.content))
+                
+                # Convert to RGB if needed
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                # Cache the image
+                self.image_cache[url] = image.copy()
+            
+            # Update current URL
+            self.current_art_url = url
             
             # Get average color and create color palette
             avg_color = self.get_average_color(image)
@@ -285,11 +309,11 @@ class SpotifyNowPlaying(QMainWindow):
             self.set_background_image(image.copy())
             
             # Then set the album art
-            image = image.resize((ALBUM_ART_SIZE, ALBUM_ART_SIZE), Image.LANCZOS)
+            resized = image.resize((ALBUM_ART_SIZE, ALBUM_ART_SIZE), Image.LANCZOS)
             
             # Convert to QPixmap
             image_bytes = BytesIO()
-            image.save(image_bytes, format='PNG')
+            resized.save(image_bytes, format='PNG')
             image_bytes.seek(0)
             
             pixmap = QPixmap()
@@ -312,6 +336,9 @@ class SpotifyNowPlaying(QMainWindow):
         
         # Reset colors to default
         self.update_colors("#ffffff", "#888888", "#555555")
+        
+        # Clear current URL
+        self.current_art_url = None
     
     def refresh_metadata(self):
         """Refresh the now playing information"""
