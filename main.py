@@ -14,7 +14,7 @@ import colorsys
 # Customization constants
 WINDOW_WIDTH = 1920
 WINDOW_HEIGHT = 1080
-ALBUM_ART_SIZE = 959
+ALBUM_ART_SIZE = 600
 AUTO_REFRESH_SECONDS = 0.1  # 100ms refresh
 
 # Background blur and dim settings
@@ -23,8 +23,8 @@ BACKGROUND_DIM_FACTOR = 0.3  # 0.0 = black, 1.0 = full brightness
 
 # Status text customization
 STATUS_TEXT = {
-    "Playing": "PLAYING",
-    "Paused": "PAUSED",
+    "Playing": "",
+    "Paused": "󰏤 PAUSED",
     "Stopped": "STOPPED"
 }
 
@@ -34,13 +34,13 @@ QMainWindow {{
 }}
 QLabel {{
     color: {primary_color};
-    font-size: 40px;
+    font-size: 55px;
     font-family: JetBrainsMono Nerd Font;
     background-color: transparent;
 }}
 QLabel#status {{
     color: {tertiary_color};
-    font-size: 25px;
+    font-size: 35px;
     background-color: transparent;
     text-transform: uppercase;
 }}
