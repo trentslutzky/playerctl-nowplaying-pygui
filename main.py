@@ -89,6 +89,10 @@ class SpotifyNowPlaying(QMainWindow):
         self.secondary_color = "#888888"
         self.tertiary_color = "#555555"
         
+        # Sleep inhibit process
+        self.inhibit_process = None
+        self.is_playing = False
+        
         # Default colors
         self.update_css()
         
@@ -174,6 +178,52 @@ class SpotifyNowPlaying(QMainWindow):
         self.timer.timeout.connect(self.refresh)
         self.timer.start(int(AUTO_REFRESH_SECONDS * 1000))
         
+    def start_inhibit(self):
+        """Start systemd-inhibit to prevent sleep"""
+        if self.inhibit_process is None:
+            try:
+                # Start systemd-inhibit with sleep and idle locks
+                self.inhibit_process = subprocess.Popen(
+                    ['systemd-inhibit',
+                     '--what=sleep:idle',
+                     '--who=spotify-now-playing',
+                     '--why=Music is playing',
+                     '--mode=block',
+                     'tail', '-f', '/dev/null'],  # Keep process alive
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                print("Started sleep inhibit")
+            except Exception as e:
+                print(f"Error starting inhibit: {e}")
+    
+    def stop_inhibit(self):
+        """Stop the systemd-inhibit process"""
+        if self.inhibit_process is not None:
+            try:
+                self.inhibit_process.terminate()
+                self.inhibit_process.wait(timeout=2)
+                print("Stopped sleep inhibit")
+            except subprocess.TimeoutExpired:
+                self.inhibit_process.kill()
+                print("Forcefully killed sleep inhibit")
+            except Exception as e:
+                print(f"Error stopping inhibit: {e}")
+            finally:
+                self.inhibit_process = None
+    
+    def update_inhibit_state(self, metadata, status):
+        """Update sleep inhibit based on playback state"""
+        should_inhibit = metadata is not None and status == "Playing"
+        
+        if should_inhibit and not self.is_playing:
+            # Started playing
+            self.start_inhibit()
+            self.is_playing = True
+        elif not should_inhibit and self.is_playing:
+            # Stopped playing or paused
+            self.stop_inhibit()
+            self.is_playing = False
     
     def get_playerctl_metadata(self):
         """Fetch metadata from playerctl"""
@@ -373,6 +423,9 @@ class SpotifyNowPlaying(QMainWindow):
         """Refresh the now playing information"""
         metadata = self.get_playerctl_metadata()
         status = self.get_playerctl_status()
+        
+        # Update sleep inhibit state based on playback
+        self.update_inhibit_state(metadata, status)
 
         (width, height) = (self.width(), self.height())
         if (width != self.current_window_width) or (height != self.current_window_height):
@@ -427,6 +480,11 @@ class SpotifyNowPlaying(QMainWindow):
                 print(f"Error toggling play/pause: {e}")
         else:
             super().keyPressEvent(event)
+    
+    def closeEvent(self, event):
+        """Clean up when closing the application"""
+        self.stop_inhibit()
+        super().closeEvent(event)
 
 def main():
     app = QApplication(sys.argv)
