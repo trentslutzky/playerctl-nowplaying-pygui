@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QLabel, QHBoxLayout)
 from PyQt6.QtCore import QTimer, Qt
@@ -12,14 +13,12 @@ from PIL import Image, ImageFilter, ImageEnhance
 import colorsys
 
 # Customization constants
-WINDOW_WIDTH = 1920
-WINDOW_HEIGHT = 1080
-ALBUM_ART_SIZE = 600
 AUTO_REFRESH_SECONDS = 0.1  # 100ms refresh
 
 # Background blur and dim settings
 BACKGROUND_BLUR_RADIUS = 50
 BACKGROUND_DIM_FACTOR = 0.3  # 0.0 = black, 1.0 = full brightness
+
 
 # Status text customization
 STATUS_TEXT = {
@@ -34,24 +33,24 @@ QMainWindow {{
 }}
 QLabel {{
     color: {primary_color};
-    font-size: 55px;
+    font-size: {primary_font_size}px;
     font-family: JetBrainsMono Nerd Font;
     background-color: transparent;
 }}
 QLabel#status {{
     color: {tertiary_color};
-    font-size: 35px;
+    font-size: {secondary_font_size}px;
     background-color: transparent;
     text-transform: uppercase;
 }}
 QLabel#info {{
     color: {secondary_color};
-    font-size: 30px;
+    font-size: {tertiary_font_size}px;
     background-color: transparent;
 }}
 QLabel#artist {{
     color: {tertiary_color};
-    font-size: 35px;
+    font-size: {secondary_font_size}px;
     background-color: transparent;
 }}
 QLabel#albumArt {{
@@ -65,11 +64,33 @@ QWidget#container {{
 class SpotifyNowPlaying(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Spotify Now Playing")
-        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.setWindowTitle("playerctl-spotify-now-playing")
+
+        screens = QApplication.screens()
+        screen = QApplication.primaryScreen()
+        for scr in screens:
+            if sys.argv[1:] and sys.argv[1] == scr.name():
+                print(f"Using scr: {scr.name()}")
+                screen = scr
+        if screen:
+            screen_geometry = screen.geometry()
+        
+            self.move(screen_geometry.topLeft())
+            self.showFullScreen()
+
+        self.auto_change_workspcace = True
+        self.current_workspace = -1
+
+        self.current_window_width = 1920
+        self.current_window_height = 1080
+        self.album_art_size = self.current_window_width // 3
+
+        self.primary_color = "#ffffff"
+        self.secondary_color = "#888888"
+        self.tertiary_color = "#555555"
         
         # Default colors
-        self.update_colors("#ffffff", "#888888", "#555555")
+        self.update_css()
         
         # Image cache
         self.image_cache = {}
@@ -85,19 +106,17 @@ class SpotifyNowPlaying(QMainWindow):
         
         # Background label (bottom layer)
         self.background_label = QLabel(central_widget)
-        self.background_label.setGeometry(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
         self.background_label.setScaledContents(True)
         self.background_label.lower()  # Send to back
         
         # Content widget (top layer)
-        content_widget = QWidget(central_widget)
-        content_widget.setObjectName("container")
-        content_widget.setGeometry(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.content_widget = QWidget(central_widget)
+        self.content_widget.setObjectName("container")
         
-        main_layout = QHBoxLayout(content_widget)
-        main_layout.setSpacing(0)
-        main_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
-        main_layout.setContentsMargins(60, 60, 60, 60)
+        self.main_layout = QHBoxLayout(self.content_widget)
+        self.main_layout.setSpacing(0)
+        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        self.main_layout.setContentsMargins(60, 60, 60, 60)
         
         # Left side - Info
         info_layout = QVBoxLayout()
@@ -138,21 +157,21 @@ class SpotifyNowPlaying(QMainWindow):
         
         self.album_art = QLabel()
         self.album_art.setObjectName("albumArt")
-        self.album_art.setFixedSize(ALBUM_ART_SIZE, ALBUM_ART_SIZE)
+        self.album_art.setFixedSize(self.album_art_size, self.album_art_size)
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setScaledContents(True)
         art_layout.addWidget(self.album_art)
         
         # Add both sides to main layout
-        main_layout.addLayout(info_layout, 0)
-        main_layout.addLayout(art_layout, 0)
+        self.main_layout.addLayout(info_layout, 0)
+        self.main_layout.addLayout(art_layout, 0)
         
         # Initial load
-        self.refresh_metadata()
+        self.refresh()
         
         # Auto-refresh timer
         self.timer = QTimer()
-        self.timer.timeout.connect(self.refresh_metadata)
+        self.timer.timeout.connect(self.refresh)
         self.timer.start(int(AUTO_REFRESH_SECONDS * 1000))
         
     
@@ -173,9 +192,16 @@ class SpotifyNowPlaying(QMainWindow):
                     key = parts[1]
                     value = parts[2]
                     metadata[key] = value
+
+            if self.auto_change_workspcace and self.current_workspace != 2:
+                self.current_workspace = 2
+                os.system("hyprctl dispatch workspace 2")
             
             return metadata
         except (subprocess.CalledProcessError, FileNotFoundError):
+            if self.auto_change_workspcace and self.current_workspace != 1:
+                self.current_workspace = 1
+                os.system("hyprctl dispatch workspace 1")
             return None
     
     def get_playerctl_status(self):
@@ -227,15 +253,18 @@ class SpotifyNowPlaying(QMainWindow):
         r, g, b = colorsys.hls_to_rgb(h, l, s)
         return (int(r * 255), int(g * 255), int(b * 255))
     
-    def update_colors(self, primary, secondary, tertiary):
+    def update_css(self):
         """Update the stylesheet with new colors"""
         css = CSS_TEMPLATE.format(
-            primary_color=primary,
-            secondary_color=secondary,
-            tertiary_color=tertiary
+            primary_color=self.primary_color,
+            secondary_color=self.secondary_color,
+            tertiary_color=self.tertiary_color,
+            primary_font_size=max(self.current_window_width // 40, 30),
+            secondary_font_size=max(self.current_window_width // 50, 24),
+            tertiary_font_size=max(self.current_window_width // 60, 18)
         )
         self.setStyleSheet(css)
-    
+
     def set_background_image(self, image):
         """Set blurred and dimmed album art as background"""
         try:
@@ -247,7 +276,7 @@ class SpotifyNowPlaying(QMainWindow):
             dimmed = enhancer.enhance(BACKGROUND_DIM_FACTOR)
             
             # Resize to window size
-            dimmed = dimmed.resize((WINDOW_WIDTH, WINDOW_HEIGHT), Image.LANCZOS)
+            dimmed = dimmed.resize((self.current_window_width, self.current_window_height), Image.LANCZOS)
             
             # Convert to QPixmap
             image_bytes = BytesIO()
@@ -293,23 +322,23 @@ class SpotifyNowPlaying(QMainWindow):
             
             # Make primary color brighter (150% brightness)
             primary_rgb = self.adjust_brightness(avg_color, 1.5)
-            primary = f"rgb({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]})"
+            self.primary_color = f"rgb({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]})"
             
             # Make secondary color bright (120% brightness)
             secondary_rgb = self.adjust_brightness(avg_color, 1.2)
-            secondary = f"rgb({secondary_rgb[0]}, {secondary_rgb[1]}, {secondary_rgb[2]})"
+            self.secondary_color = f"rgb({secondary_rgb[0]}, {secondary_rgb[1]}, {secondary_rgb[2]})"
             
             # Make tertiary color normal brightness (100%)
-            tertiary = f"rgb({avg_color[0]}, {avg_color[1]}, {avg_color[2]})"
+            self.tertiary_color = f"rgb({avg_color[0]}, {avg_color[1]}, {avg_color[2]})"
             
             # Update colors
-            self.update_colors(primary, tertiary, secondary)
+            self.update_css()
             
             # Set background
             self.set_background_image(image.copy())
             
             # Then set the album art
-            resized = image.resize((ALBUM_ART_SIZE, ALBUM_ART_SIZE), Image.LANCZOS)
+            resized = image.resize((self.album_art_size, self.album_art_size), Image.LANCZOS)
             
             # Convert to QPixmap
             image_bytes = BytesIO()
@@ -325,25 +354,38 @@ class SpotifyNowPlaying(QMainWindow):
     
     def show_placeholder_art(self):
         """Show a placeholder when no art is available"""
-        pixmap = QPixmap(ALBUM_ART_SIZE, ALBUM_ART_SIZE)
+        pixmap = QPixmap(self.album_art_size, self.album_art_size)
         pixmap.fill(Qt.GlobalColor.darkGray)
         self.album_art.setPixmap(pixmap)
         
         # Reset background to black
-        black_pixmap = QPixmap(WINDOW_WIDTH, WINDOW_HEIGHT)
+        black_pixmap = QPixmap(self.current_window_width, self.current_window_height)
         black_pixmap.fill(Qt.GlobalColor.black)
         self.background_label.setPixmap(black_pixmap)
         
         # Reset colors to default
-        self.update_colors("#ffffff", "#888888", "#555555")
+        self.update_css()
         
         # Clear current URL
         self.current_art_url = None
     
-    def refresh_metadata(self):
+    def refresh(self):
         """Refresh the now playing information"""
         metadata = self.get_playerctl_metadata()
         status = self.get_playerctl_status()
+
+        (width, height) = (self.width(), self.height())
+        if (width != self.current_window_width) or (height != self.current_window_height):
+            self.current_window_width = width
+            self.current_window_height = height
+            self.content_widget.setGeometry(0, 0, width, height)
+            self.background_label.setGeometry(0, 0, width, height)
+            self.album_art_size = width // 3
+            self.album_art.setFixedSize(self.album_art_size, self.album_art_size)
+            margin = width // 25
+            self.main_layout.setContentsMargins(margin, margin, margin, margin)
+            self.update_css()
+            print(f"Window resized to: {width}x{height}")
         
         if metadata:
             title = metadata.get('xesam:title', 'Unknown Title')
