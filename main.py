@@ -66,17 +66,7 @@ class SpotifyNowPlaying(QMainWindow):
         super().__init__()
         self.setWindowTitle("playerctl-spotify-now-playing")
 
-        screens = QApplication.screens()
-        screen = QApplication.primaryScreen()
-        for scr in screens:
-            if sys.argv[1:] and sys.argv[1] == scr.name():
-                print(f"Using scr: {scr.name()}")
-                screen = scr
-        if screen:
-            screen_geometry = screen.geometry()
-        
-            self.move(screen_geometry.topLeft())
-            self.showFullScreen()
+        self.showFullScreen()
 
         self.auto_change_workspcace = True
         self.current_workspace = -1
